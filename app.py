@@ -1,56 +1,74 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from predictor import diagnose_with_followups, continue_diagnosis
+from predictor import diagnose_with_followups, suggest_follow_ups, encode_symptoms, get_additional_info
+import uuid
 
 app = Flask(__name__)
 CORS(app)
 
+# In-memory session tracking
 sessions = {}
 
 @app.route("/start", methods=["POST"])
-def start_diagnosis():
-    data = request.json
-    symptoms = data.get("symptoms", [])
+def start():
+    data = request.get_json()
+    symptoms = [s.strip().lower().replace(" ", "_") for s in data.get("symptoms", [])]
+    session_id = str(uuid.uuid4())
+    sessions[session_id] = {
+        "symptoms": symptoms,
+        "asked": set()
+    }
 
-    result = diagnose_with_followups(symptoms)
-
-    if result["done"]:
-        return jsonify(result)
-    else:
-        session_id = str(len(sessions) + 1)
-        sessions[session_id] = result
-        return jsonify({
-            "session_id": session_id,
-            "symptom": result["symptom"],
-            "done": False
-        })
+    return run_diagnosis(session_id)
 
 @app.route("/answer", methods=["POST"])
-def continue_diag():
-    data = request.json
-    session_id = data["session_id"]
-    answer = data["answer"]
-    symptom = data["symptom"]
+def answer():
+    data = request.get_json()
+    session_id = data.get("session_id")
+    answer = data.get("answer")
+    follow_symptom = data.get("symptom")
 
-    session_data = sessions.get(session_id)
-
-    if not session_data:
+    if session_id not in sessions:
         return jsonify({"error": "Invalid session"}), 400
 
-    result = continue_diagnosis(session_data, symptom, answer)
-    
-    if result["done"]:
-        return jsonify(result)
-    else:
-        sessions[session_id] = result
-        return jsonify({
-            "session_id": session_id,
-            "symptom": result["symptom"],
-            "done": False
-        })
+    session = sessions[session_id]
 
-# 👇 Required for Render to bind to the correct port
+    if answer == "yes":
+        session["symptoms"].append(follow_symptom)
+
+    session["asked"].add(follow_symptom)
+
+    return run_diagnosis(session_id)
+
+def run_diagnosis(session_id):
+    session = sessions[session_id]
+
+    def ask_user_func(question):
+        next_symptom = question.split("'")[1].replace(" ", "_").lower()
+        session["last_question"] = next_symptom
+        return "no"  # simulate "no", frontend handles real answer
+
+    result = diagnose_with_followups(session["symptoms"], ask_user_func)
+
+    if result["Confidence"] >= 85 or len(session["asked"]) >= 10:
+        result["done"] = True
+        sessions.pop(session_id, None)
+        return jsonify(result)
+
+    follow_ups = suggest_follow_ups(session["symptoms"], session["asked"])
+    if follow_ups:
+        return jsonify({
+            "done": False,
+            "symptom": follow_ups[0],
+            "session_id": session_id
+        })
+    else:
+        result["done"] = True
+        sessions.pop(session_id, None)
+        return jsonify(result)
+
+# ✅ Required for Render (binds to correct port)
 if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port)
