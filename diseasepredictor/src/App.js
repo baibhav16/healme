@@ -9,6 +9,8 @@ function App() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const BACKEND_URL = "https://healme-1-jhun.onrender.com"; // ✅ Replace with your actual backend URL
+
   const startDiagnosis = async () => {
     const parsed = input
       .split(",")
@@ -19,7 +21,7 @@ function App() {
 
     setLoading(true);
     try {
-      const res = await axios.post("/start", { symptoms: parsed });
+      const res = await axios.post(`${BACKEND_URL}/start`, { symptoms: parsed });
       if (res.data.done) {
         setResult(res.data);
       } else {
@@ -28,6 +30,7 @@ function App() {
         setSymptoms(parsed);
       }
     } catch (err) {
+      console.error(err);
       alert("Failed to connect to backend.");
     }
     setLoading(false);
@@ -36,7 +39,7 @@ function App() {
   const handleAnswer = async (answer) => {
     setLoading(true);
     try {
-      const res = await axios.post("/answer", {
+      const res = await axios.post(`${BACKEND_URL}/answer`, {
         session_id: sessionId,
         answer,
         symptom: ask,
@@ -49,6 +52,7 @@ function App() {
         setAsk(res.data.symptom);
       }
     } catch (err) {
+      console.error(err);
       alert("Something went wrong while answering follow-up.");
     }
     setLoading(false);
