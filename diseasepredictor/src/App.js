@@ -15,7 +15,7 @@ function App() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const BACKEND_URL = "http://127.0.0.1:5000";
+  const BACKEND_URL = "https://healme-1-jhun.onrender.com";
 
   const startDiagnosis = async () => {
     const parsed = input
