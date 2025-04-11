@@ -17,12 +17,14 @@ def start():
     age = data.get("age")
     gender = data.get("gender")
     session_id = str(uuid.uuid4())
-    user_sessions[session_id] = {
+
+    sessions[session_id] = {
         "symptoms": symptoms,
         "asked": set(),
         "name": name,
         "age": age,
-        "gender": gender
+        "gender": gender,
+        "followup_qa": []
     }
 
     return run_diagnosis(session_id)
@@ -43,6 +45,40 @@ def answer():
         session["symptoms"].append(follow_symptom)
 
     session["asked"].add(follow_symptom)
+    session["followup_qa"].append({
+        "question": follow_symptom,
+        "answer": answer
+    })
+
+    return run_diagnosis(session_id)
+
+@app.route("/update-followups", methods=["POST"])
+def update_followups():
+    data = request.get_json()
+    name = data.get("name")
+    age = data.get("age")
+    gender = data.get("gender")
+    qa = data.get("followup_qa", [])
+    initial_symptoms = data.get("initial_symptoms", [])
+
+    # Rebuild symptoms based on all "yes" answers
+    updated_symptoms = initial_symptoms.copy()
+    for item in qa:
+        if item["answer"] == "yes" and item["question"] not in updated_symptoms:
+            updated_symptoms.append(item["question"])
+        elif item["answer"] == "no" and item["question"] in updated_symptoms:
+            updated_symptoms.remove(item["question"])
+
+    # Dummy session to evaluate diagnosis
+    session_id = str(uuid.uuid4())
+    sessions[session_id] = {
+        "symptoms": updated_symptoms,
+        "asked": {item["question"] for item in qa},
+        "name": name,
+        "age": age,
+        "gender": gender,
+        "followup_qa": qa
+    }
 
     return run_diagnosis(session_id)
 
@@ -61,6 +97,9 @@ def run_diagnosis(session_id):
         result["name"] = session.get("name")
         result["age"] = session.get("age")
         result["gender"] = session.get("gender")
+        result["initial_symptoms"] = session.get("symptoms", [])
+        result["followups_asked"] = list(session.get("asked", []))
+        result["followup_qa"] = session.get("followup_qa", [])
         sessions.pop(session_id, None)
         return jsonify(result)
 
@@ -76,6 +115,9 @@ def run_diagnosis(session_id):
         result["name"] = session.get("name")
         result["age"] = session.get("age")
         result["gender"] = session.get("gender")
+        result["initial_symptoms"] = session.get("symptoms", [])
+        result["followups_asked"] = list(session.get("asked", []))
+        result["followup_qa"] = session.get("followup_qa", [])
         sessions.pop(session_id, None)
         return jsonify(result)
 
