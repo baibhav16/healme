@@ -17,7 +17,10 @@ def start():
     age = data.get("age")
     gender = data.get("gender")
     session_id = str(uuid.uuid4())
+<<<<<<< HEAD
 
+=======
+>>>>>>> 7939770c373e44f82b2d03a7773ce5fcc7c1eb06
     sessions[session_id] = {
         "symptoms": symptoms,
         "asked": set(),
