@@ -1,55 +1,58 @@
 import pandas as pd
 import joblib
 from sklearn.ensemble import RandomForestClassifier
+from collections import Counter
 
-# Load pre-trained model and encoders
+# Load models and data
 model = joblib.load("model.pkl")
 le = joblib.load("label_encoder.pkl")
 symptom_vocabulary = joblib.load("symptom_vocab.pkl")
 
-# Load datasets
 df = pd.read_csv("DiseaseAndSymptoms.csv")
 desc_df = pd.read_csv("description.csv")
 prec_df = pd.read_csv("precautions_df.csv")
 diet_df = pd.read_csv("diets.csv")
+tests_df = pd.read_csv("DiseaseAndDiagnosticTests.csv")
 df.fillna("", inplace=True)
 
-# Extract symptom columns
+# Process symptom columns
 symptom_columns = [col for col in df.columns if col.startswith("Symptom_")]
+df["symptoms_processed"] = df[symptom_columns].apply(
+    lambda row: [str(s).strip().lower().replace(" ", "_") for s in row if pd.notna(s) and str(s).strip()],
+    axis=1
+)
 
-# Encode input symptoms
 def encode_symptoms(symptom_list):
     symptom_list = [s.strip().lower().replace(" ", "_") for s in symptom_list]
     return [1 if sym in symptom_list else 0 for sym in symptom_vocabulary]
 
-# Suggest next follow-up symptoms based on co-occurrence
-def suggest_follow_ups(current_symptoms, asked_set, top_n=10):
-    current_symptoms_set = set(current_symptoms)
-    co_occurrence = {}
-    for _, row in df.iterrows():
-        row_syms = [str(s).strip().lower().replace(" ", "_") for s in row[symptom_columns] if pd.notna(s) and str(s).strip()]
-        if any(sym in row_syms for sym in current_symptoms_set):
-            for s in row_syms:
-                if s not in current_symptoms_set and s not in asked_set and s != "":
-                    co_occurrence[s] = co_occurrence.get(s, 0) + 1
-    sorted_syms = sorted(co_occurrence.items(), key=lambda x: x[1], reverse=True)
-    return [s[0] for s in sorted_syms[:top_n]]
-
-# Retrieve description, diet, precautions
 def get_additional_info(disease_name):
     disease_name = disease_name.lower()
     description = desc_df.loc[desc_df["Disease"].str.lower() == disease_name, "Description"]
     diet = diet_df.loc[diet_df["Disease"].str.lower() == disease_name, "Diet"]
     precautions = prec_df.loc[prec_df["Disease"].str.lower() == disease_name].iloc[:, 1:].values.flatten()
+    tests = tests_df.loc[tests_df["Disease"].str.lower() == disease_name, "Diagnostic_Test"]
 
-    info = {
+    return {
         "Description": description.values[0] if not description.empty else "No description available.",
         "Diet": eval(diet.values[0]) if not diet.empty else [],
-        "Precautions": [p for p in precautions if isinstance(p, str) and p.strip()]
+        "Precautions": [p for p in precautions if isinstance(p, str) and p.strip()],
+        "Tests": tests.values[0].split(",") if not tests.empty else []
     }
-    return info
 
-# Main function with interactive follow-ups
+def suggest_follow_ups(current_symptoms, asked_set, top_n=10):
+    current_symptoms_set = set(current_symptoms)
+    suggestions = []
+
+    for row_syms in df["symptoms_processed"]:
+        if any(sym in row_syms for sym in current_symptoms_set):
+            for s in row_syms:
+                if s not in current_symptoms_set and s not in asked_set:
+                    suggestions.append(s)
+
+    counter = Counter(suggestions)
+    return [s for s, _ in counter.most_common(top_n)]
+
 def diagnose_with_followups(initial_symptoms, ask_user_func, max_questions=10):
     current_symptoms = [s.strip().lower().replace(" ", "_") for s in initial_symptoms]
     asked = set()
@@ -58,7 +61,6 @@ def diagnose_with_followups(initial_symptoms, ask_user_func, max_questions=10):
         input_vector = encode_symptoms(current_symptoms)
         prediction = model.predict([input_vector])
         prob = model.predict_proba([input_vector]).max()
-
         predicted_disease = le.inverse_transform(prediction)[0]
 
         if prob > 0.85:
@@ -68,7 +70,9 @@ def diagnose_with_followups(initial_symptoms, ask_user_func, max_questions=10):
                 "Confidence": round(prob * 100, 2),
                 "Description": info["Description"],
                 "Diet": info["Diet"],
-                "Precautions": info["Precautions"]
+                "Precautions": info["Precautions"],
+                "Tests": info["Tests"],
+                "done": True
             }
 
         follow_ups = suggest_follow_ups(current_symptoms, asked)
@@ -89,5 +93,7 @@ def diagnose_with_followups(initial_symptoms, ask_user_func, max_questions=10):
         "Confidence": round(prob * 100, 2),
         "Description": info["Description"],
         "Diet": info["Diet"],
-        "Precautions": info["Precautions"]
+        "Precautions": info["Precautions"],
+        "Tests": info["Tests"],
+        "done": True
     }

@@ -1,22 +1,28 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from predictor import diagnose_with_followups, suggest_follow_ups, encode_symptoms, get_additional_info
+from predictor import diagnose_with_followups, suggest_follow_ups
 import uuid
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-# Session-like storage
-user_sessions = {}
+sessions = {}
 
 @app.route("/start", methods=["POST"])
 def start():
     data = request.get_json()
     symptoms = [s.strip().lower().replace(" ", "_") for s in data.get("symptoms", [])]
+    name = data.get("name")
+    age = data.get("age")
+    gender = data.get("gender")
     session_id = str(uuid.uuid4())
-    user_sessions[session_id] = {
+    sessions[session_id] = {
         "symptoms": symptoms,
-        "asked": set()
+        "asked": set(),
+        "name": name,
+        "age": age,
+        "gender": gender
     }
 
     return run_diagnosis(session_id)
@@ -28,10 +34,10 @@ def answer():
     answer = data.get("answer")
     follow_symptom = data.get("symptom")
 
-    if session_id not in user_sessions:
+    if session_id not in sessions:
         return jsonify({"error": "Invalid session"}), 400
 
-    session = user_sessions[session_id]
+    session = sessions[session_id]
 
     if answer == "yes":
         session["symptoms"].append(follow_symptom)
@@ -41,17 +47,22 @@ def answer():
     return run_diagnosis(session_id)
 
 def run_diagnosis(session_id):
-    session = user_sessions[session_id]
+    session = sessions[session_id]
 
-    def fake_user_func(q):
-        return "no"  # We skip this — frontend handles asking
+    def ask_user_func(question):
+        next_symptom = question.split("'")[1].replace(" ", "_").lower()
+        session["last_question"] = next_symptom
+        return "no"
 
-    encoded = encode_symptoms(session["symptoms"])
-    pred = diagnose_with_followups(session["symptoms"], fake_user_func)
+    result = diagnose_with_followups(session["symptoms"], ask_user_func)
 
-    if pred["Confidence"] >= 85 or len(session["asked"]) >= 10:
-        pred["done"] = True
-        return jsonify(pred)
+    if result["Confidence"] >= 85 or len(session["asked"]) >= 10:
+        result["done"] = True
+        result["name"] = session.get("name")
+        result["age"] = session.get("age")
+        result["gender"] = session.get("gender")
+        sessions.pop(session_id, None)
+        return jsonify(result)
 
     follow_ups = suggest_follow_ups(session["symptoms"], session["asked"])
     if follow_ups:
@@ -61,8 +72,13 @@ def run_diagnosis(session_id):
             "session_id": session_id
         })
     else:
-        pred["done"] = True
-        return jsonify(pred)
+        result["done"] = True
+        result["name"] = session.get("name")
+        result["age"] = session.get("age")
+        result["gender"] = session.get("gender")
+        sessions.pop(session_id, None)
+        return jsonify(result)
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
