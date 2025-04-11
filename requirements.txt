@@ -3,3 +3,5 @@ flask-cors
 pandas
 scikit-learn
 joblib
+fpdf
+

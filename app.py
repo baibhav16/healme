@@ -1,22 +1,29 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from predictor import diagnose_with_followups, suggest_follow_ups, encode_symptoms, get_additional_info
+from predictor import diagnose_with_followups, suggest_follow_ups
 import uuid
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-# In-memory session tracking
 sessions = {}
 
 @app.route("/start", methods=["POST"])
 def start():
     data = request.get_json()
     symptoms = [s.strip().lower().replace(" ", "_") for s in data.get("symptoms", [])]
+    name = data.get("name")
+    age = data.get("age")
+    gender = data.get("gender")
     session_id = str(uuid.uuid4())
+
     sessions[session_id] = {
         "symptoms": symptoms,
-        "asked": set()
+        "asked": set(),
+        "name": name,
+        "age": age,
+        "gender": gender
     }
 
     return run_diagnosis(session_id)
@@ -46,12 +53,15 @@ def run_diagnosis(session_id):
     def ask_user_func(question):
         next_symptom = question.split("'")[1].replace(" ", "_").lower()
         session["last_question"] = next_symptom
-        return "no"  # simulate "no", frontend handles real answer
+        return "no"
 
     result = diagnose_with_followups(session["symptoms"], ask_user_func)
 
     if result["Confidence"] >= 85 or len(session["asked"]) >= 10:
         result["done"] = True
+        result["name"] = session.get("name")
+        result["age"] = session.get("age")
+        result["gender"] = session.get("gender")
         sessions.pop(session_id, None)
         return jsonify(result)
 
@@ -64,11 +74,12 @@ def run_diagnosis(session_id):
         })
     else:
         result["done"] = True
+        result["name"] = session.get("name")
+        result["age"] = session.get("age")
+        result["gender"] = session.get("gender")
         sessions.pop(session_id, None)
         return jsonify(result)
 
-# ✅ Required for Render (binds to correct port)
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
