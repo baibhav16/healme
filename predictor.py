@@ -3,12 +3,11 @@ import joblib
 from sklearn.ensemble import RandomForestClassifier
 from collections import Counter
 
-# Load models and encoders
+# Load pre-trained model and encoders
 model = joblib.load("model.pkl")
 le = joblib.load("label_encoder.pkl")
 symptom_vocabulary = joblib.load("symptom_vocab.pkl")
 
-# Load datasets
 df = pd.read_csv("DiseaseAndSymptoms.csv")
 desc_df = pd.read_csv("description.csv")
 prec_df = pd.read_csv("precautions_df.csv")
@@ -16,7 +15,7 @@ diet_df = pd.read_csv("diets.csv")
 tests_df = pd.read_csv("DiseaseAndDiagnosticTests.csv")
 df.fillna("", inplace=True)
 
-# Cache symptom columns and processed symptom rows
+# Extract symptom columns
 symptom_columns = [col for col in df.columns if col.startswith("Symptom_")]
 df["symptoms_processed"] = df[symptom_columns].apply(
     lambda row: [str(s).strip().lower().replace(" ", "_") for s in row if pd.notna(s) and str(s).strip()],
