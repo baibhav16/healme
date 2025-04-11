@@ -185,7 +185,7 @@ function App() {
     rel="noopener noreferrer"
     className="nav-btn right"
   >
-    🔗Check Drug Interaction
+    🔗Drug Interaction
   </a>
       </div>
     <div className="app">
